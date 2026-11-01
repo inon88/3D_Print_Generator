@@ -1,0 +1,41 @@
+node_modules/
+dist/
+release/
+*.log
+
+# Local diagnostics and scratch files
+.tmp-*
+*-diagnostic.txt
+
+# Downloaded OpenSCAD WebAssembly runtime
+/vendor/openscad-wasm/
+/vendor/openscad-wasm.tmp/
+
+# Example tools stay local; only the first-run sample is shipped
+/examples/*
+!/examples/bracket.scad
+
+# Private reference material and local development notes
+/reffImage/
+/imple/
+/.claude/
+/CLAUDE.md
+/rancangan.md
+
+# Credentials and signing material
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+*.cer
+*.provisionprofile
+.npmrc
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/

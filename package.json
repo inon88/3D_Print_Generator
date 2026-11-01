@@ -1,0 +1,105 @@
+{
+  "name": "formforge",
+  "version": "0.1.0",
+  "description": "A local-first parametric OpenSCAD tool library",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "main": "main.cjs",
+  "scripts": {
+    "start": "npm run build && electron .",
+    "build": "node scripts/fetch-openscad-wasm.cjs && esbuild renderer.js --bundle --format=esm --outfile=dist/renderer.js",
+    "package": "npm run build && electron-builder --dir",
+    "dist:win": "npm run build && electron-builder --win nsis --x64",
+    "dist:mac": "npm run build && electron-builder --mac dmg --x64 --arm64",
+    "dist:linux": "npm run build && electron-builder --linux AppImage --x64",
+    "check": "node --check main.cjs && node --check preload.cjs && node --check scad-render-worker.cjs && node --check scripts/fetch-openscad-wasm.cjs && node --check parameters.cjs && node --check scad-assets.cjs && node --check font-name.cjs && node --check raster-to-svg.cjs && node --check image-trace.cjs && node --check image-trace-worker.cjs && node --check svg-layers.cjs && node --check icon-library.cjs && node --check heightmap.cjs && node --check transform.cjs && node --check mesh-transform.cjs && npm test && npm run build",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@visioncortex/vtracer": "1.0.0-alpha.4",
+    "three": "^0.179.1"
+  },
+  "devDependencies": {
+    "electron": "45.2.1",
+    "electron-builder": "26.18.1",
+    "esbuild": "^0.25.10"
+  },
+  "build": {
+    "appId": "com.formforge.app",
+    "productName": "FormForge",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "**/*",
+      "!test{,/**/*}",
+      "!scripts{,/**/*}",
+      "!imple{,/**/*}",
+      "!reffImage{,/**/*}",
+      "!.claude{,/**/*}",
+      "!vendor{,/**/*}",
+      "!release{,/**/*}",
+      "!renderer.js",
+      "!rancangan.md",
+      "!README.md",
+      "!INSTALLATION.md",
+      "!CLAUDE.md",
+      "!.gitignore"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "category": "public.app-category.productivity"
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "category": "Graphics"
+    },
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+    "asarUnpack": [
+      "scad-render-worker.cjs",
+      "scad-assets.cjs",
+      "image-trace-worker.cjs",
+      "image-trace.cjs",
+      "node_modules/@visioncortex/vtracer/**"
+    ],
+    "extraResources": [
+      {
+        "from": "vendor/openscad-wasm",
+        "to": "openscad-wasm",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ]
+  }
+}
