@@ -21,6 +21,7 @@ release/
 /.claude/
 /CLAUDE.md
 /rancangan.md
+/web/
 
 # Credentials and signing material
 .env
