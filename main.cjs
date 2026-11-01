@@ -14,7 +14,7 @@ const { validateHeightmapPng } = require('./heightmap.cjs');
 const { normalizeTransformPayload, parseItemEchoes, parsePlateCount, MAX_EXPORT_PLATES } = require('./transform.cjs');
 const { applyMeshTransform, groupObjectsAsParts } = require('./mesh-transform.cjs');
 
-const DEFAULT_APP_TITLE = 'FormForge';
+const DEFAULT_APP_TITLE = 'BonaStudio';
 const MAX_SCAD_BYTES = 10 * 1024 * 1024;
 // Preview favours responsiveness; it keeps the model's own resolution when the source sets one.
 const PREVIEW_QUALITY = { fa: 20, fs: 2 };
@@ -481,7 +481,50 @@ function createWindow() {
   mainWindow.loadFile(path.join(__dirname, 'index.html'));
 }
 
+// The app was called FormForge before; copy its library, icon packs and presets (Local Storage) once,
+// before the window opens, so a renamed install keeps the user's tools.
+const LEGACY_APP_TITLE = 'FormForge';
+const LEGACY_DATA_FOLDERS = ['FormForge', 'formforge'];
+const MIGRATED_ENTRIES = ['library', 'icon-packs', 'Local Storage'];
+
+async function migrateLegacyUserData() {
+  const userData = app.getPath('userData');
+  try {
+    await fs.access(path.join(userData, 'library'));
+    return;
+  } catch {}
+  for (const folder of LEGACY_DATA_FOLDERS) {
+    const legacy = path.join(app.getPath('appData'), folder);
+    if (path.relative(legacy, userData) === '') continue;
+    try {
+      await fs.access(path.join(legacy, 'library'));
+    } catch {
+      continue;
+    }
+    for (const entry of MIGRATED_ENTRIES) {
+      await fs.cp(path.join(legacy, entry), path.join(userData, entry), { recursive: true, errorOnExist: false, force: false })
+        .catch(error => { if (error.code !== 'ENOENT') throw error; });
+    }
+    const settingsPath = dataPaths().settings;
+    try {
+      const settings = JSON.parse(await fs.readFile(settingsPath, 'utf8'));
+      if (settings.appTitle === LEGACY_APP_TITLE) {
+        settings.appTitle = DEFAULT_APP_TITLE;
+        await fs.writeFile(settingsPath, JSON.stringify(settings, null, 2), 'utf8');
+      }
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+    }
+    return;
+  }
+}
+
 app.whenReady().then(async () => {
+  try {
+    await migrateLegacyUserData();
+  } catch (error) {
+    console.error('Could not copy data from the previous FormForge installation:', error);
+  }
   await ensureLibrary();
   appTitle = (await settingsRead()).appTitle;
   createWindow();
@@ -632,7 +675,7 @@ ipcMain.handle('tools:delete', async (_event, toolId) => {
     cancelId: 1,
     title: 'Delete tool?',
     message: `Delete "${manifest.name}" from the library?`,
-    detail: 'This only deletes the copy stored in FormForge.'
+    detail: 'This only deletes the copy stored in BonaStudio.'
   });
   if (result.response !== 0) return { deleted: false, tools: await listTools() };
   await fs.rm(path.join(dataPaths().tools, toolId), { recursive: true, force: false });

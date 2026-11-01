@@ -1,8 +1,8 @@
-# Instalasi & Kompilasi FormForge
+# Instalasi & Kompilasi BonaStudio
 
-Panduan ini menjelaskan cara menyiapkan lingkungan pengembangan, menjalankan FormForge dari kode sumber, dan mengompilasi installer untuk **Windows**, **Linux**, dan **macOS**.
+Panduan ini menjelaskan cara menyiapkan lingkungan pengembangan, menjalankan BonaStudio dari kode sumber, dan mengompilasi installer untuk **Windows**, **Linux**, dan **macOS**.
 
-FormForge adalah aplikasi Electron. Mesin render OpenSCAD WebAssembly diunduh otomatis saat build dan disertakan di dalam installer, sehingga pengguna akhir **tidak** perlu memasang OpenSCAD, Node.js, atau dependensi lain.
+BonaStudio adalah aplikasi Electron. Mesin render OpenSCAD WebAssembly diunduh otomatis saat build dan disertakan di dalam installer, sehingga pengguna akhir **tidak** perlu memasang OpenSCAD, Node.js, atau dependensi lain.
 
 ---
 
@@ -13,9 +13,9 @@ FormForge adalah aplikasi Electron. Mesin render OpenSCAD WebAssembly diunduh ot
 | Pasang dependensi | `npm ci` | folder `node_modules/` |
 | Jalankan dari sumber | `npm start` | aplikasi terbuka (mode pengembangan) |
 | Uji + cek sintaks + build | `npm run check` | semua tes lulus, `dist/renderer.js` |
-| Installer Windows | `npm run dist:win` | `release/FormForge-<versi>-win-x64.exe` |
-| Installer macOS | `npm run dist:mac` | `release/FormForge-<versi>-mac-x64.dmg` dan `-mac-arm64.dmg` |
-| Paket Linux | `npm run dist:linux` | `release/FormForge-<versi>-linux-x86_64.AppImage` |
+| Installer Windows | `npm run dist:win` | `release/BonaStudio-<versi>-win-x64.exe` |
+| Installer macOS | `npm run dist:mac` | `release/BonaStudio-<versi>-mac-x64.dmg` dan `-mac-arm64.dmg` |
+| Paket Linux | `npm run dist:linux` | `release/BonaStudio-<versi>-linux-x86_64.AppImage` |
 | Paket tanpa installer | `npm run package` | `release/<os>-unpacked/` |
 
 > **Aturan penting:** kompilasi installer di sistem operasi yang dituju. DMG macOS **hanya** bisa dibuat di macOS. Installer Windows sebaiknya dibuat di Windows, dan AppImage di Linux.
@@ -79,7 +79,7 @@ npm run check      # opsional tetapi disarankan: cek sintaks + tes + build
 npm run dist:win
 ```
 
-Hasil: `release\FormForge-0.1.0-win-x64.exe` (installer NSIS; pengguna dapat memilih folder instalasi).
+Hasil: `release\BonaStudio-0.1.0-win-x64.exe` (installer NSIS; pengguna dapat memilih folder instalasi).
 
 Catatan:
 - Installer **belum ditandatangani** (code signing). Windows SmartScreen dapat menampilkan peringatan "Windows protected your PC" → klik **More info › Run anyway**. Untuk distribusi publik, tandatangani dengan sertifikat code signing (atur variabel lingkungan `CSC_LINK` dan `CSC_KEY_PASSWORD` sebelum `npm run dist:win`).
@@ -137,19 +137,19 @@ npm run check      # opsional tetapi disarankan
 npm run dist:linux
 ```
 
-Hasil: `release/FormForge-0.1.0-linux-x86_64.AppImage`.
+Hasil: `release/BonaStudio-0.1.0-linux-x86_64.AppImage`.
 
 Menjalankan AppImage:
 
 ```bash
-chmod +x release/FormForge-*.AppImage
-./release/FormForge-*.AppImage
+chmod +x release/BonaStudio-*.AppImage
+./release/BonaStudio-*.AppImage
 ```
 
 Bila muncul galat FUSE (`dlopen(): error loading libfuse.so.2`), pasang `libfuse2`/`libfuse2t64` seperti di atas, atau jalankan tanpa FUSE:
 
 ```bash
-./release/FormForge-*.AppImage --appimage-extract-and-run
+./release/BonaStudio-*.AppImage --appimage-extract-and-run
 ```
 
 ---
@@ -187,14 +187,14 @@ npm run dist:mac
 ```
 
 Hasil di `release/`:
-- `FormForge-0.1.0-mac-x64.dmg` — Mac Intel
-- `FormForge-0.1.0-mac-arm64.dmg` — Mac Apple silicon (M1/M2/M3/…)
+- `BonaStudio-0.1.0-mac-x64.dmg` — Mac Intel
+- `BonaStudio-0.1.0-mac-arm64.dmg` — Mac Apple silicon (M1/M2/M3/…)
 
 Catatan:
 - Aplikasi **belum ditandatangani & dinotarisasi**. Gatekeeper akan memblokirnya saat pertama dibuka. Untuk pengujian: klik kanan aplikasi › **Open**, atau jalankan:
 
   ```bash
-  xattr -dr com.apple.quarantine /Applications/FormForge.app
+  xattr -dr com.apple.quarantine /Applications/BonaStudio.app
   ```
 
 - Untuk distribusi publik dibutuhkan akun Apple Developer: sertifikat *Developer ID Application* (via `CSC_LINK`/`CSC_KEY_PASSWORD` atau keychain) dan notarisasi (`APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`, serta opsi `"notarize": true` di bagian `build.mac` `package.json`). Konfigurasi ini belum disertakan.
@@ -213,13 +213,15 @@ Folder `dist/`, `release/`, `node_modules/`, dan `vendor/openscad-wasm/` adalah 
 
 ## 7. Lokasi data pengguna
 
-Pustaka tool, preset, pengaturan, dan icon pack disimpan di direktori data Electron:
+Pustaka tool, preset, pengaturan, dan icon pack disimpan di direktori data Electron (sama untuk aplikasi terpasang dan `npm start`):
 
-| OS | Aplikasi terpasang | Mode pengembangan (`npm start`) |
-|---|---|---|
-| Windows | `%APPDATA%\FormForge` | `%APPDATA%\formforge` |
-| macOS | `~/Library/Application Support/FormForge` | `~/Library/Application Support/formforge` |
-| Linux | `~/.config/FormForge` | `~/.config/formforge` |
+| OS | Lokasi |
+|---|---|
+| Windows | `%APPDATA%\BonaStudio` |
+| macOS | `~/Library/Application Support/BonaStudio` |
+| Linux | `~/.config/BonaStudio` |
+
+Aplikasi ini sebelumnya bernama **FormForge**. Saat BonaStudio pertama kali dijalankan dan belum punya pustaka, data dari folder lama (`FormForge` / `formforge` di lokasi yang sama) disalin otomatis: pustaka tool, icon pack, dan preset. Folder lama tidak dihapus; hapus manual setelah memastikan semua tool muncul.
 
 Menghapus aplikasi tidak menghapus folder ini; hapus manual bila ingin bersih total.
 
@@ -235,7 +237,7 @@ Menghapus aplikasi tidak menghapus folder ini; hapus manual bila ingin bersih to
 | Unduhan Electron gagal / lambat (saat `npm start` pertama atau `npm run dist:*`) | Jaringan atau proxy perusahaan. Atur `HTTPS_PROXY`, atau mirror: `ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/`. `ELECTRON_SKIP_BINARY_DOWNLOAD` tidak berlaku lagi sejak Electron 42. |
 | "Render engine missing" di aplikasi | `vendor/openscad-wasm/` kosong saat packaging. Jalankan `npm run build` dengan koneksi internet lalu kemas ulang. |
 | Linux: aplikasi tidak terbuka, galat `libnss3.so`/`libgtk-3.so` | Pasang pustaka sistem di bagian 4.1. |
-| macOS: "FormForge is damaged and can't be opened" | Atribut karantina pada aplikasi tanpa tanda tangan. Jalankan perintah `xattr` di bagian 5.3. |
+| macOS: "BonaStudio is damaged and can't be opened" | Atribut karantina pada aplikasi tanpa tanda tangan. Jalankan perintah `xattr` di bagian 5.3. |
 | Windows: SmartScreen memblokir installer | Installer belum ditandatangani. **More info › Run anyway**, atau tandatangani installer. |
 
 ---

@@ -62,7 +62,7 @@ const ui = {
   viewHelp: $('#viewHelp')
 };
 
-const DEFAULT_APP_TITLE = 'FormForge';
+const DEFAULT_APP_TITLE = 'BonaStudio';
 const PRESET_STORAGE_PREFIX = 'formforge:presets:';
 
 const state = {
@@ -2135,7 +2135,7 @@ function onToolAdded(result, message) {
 }
 
 function openAddToolModal() {
-  openModal('Add tool', 'Each tool is one OpenSCAD model. FormForge stores a copy in your local library; the original files are never changed.', `
+  openModal('Add tool', 'Each tool is one OpenSCAD model. BonaStudio stores a copy in your local library; the original files are never changed.', `
     <div class="choice-grid">${ADD_TOOL_SOURCES.map(source => `<button class="choice-card" type="button" data-add-source="${source.id}">
         <span class="choice-icon"><svg viewBox="0 0 24 24">${source.icon}</svg></span>
         <strong>${source.title}</strong><small>${source.description}</small>
@@ -2193,7 +2193,7 @@ function openSettings() {
         <h3>Application identity</h3><p>Customize the name shown in the app window and workspace.</p>
       </div>
       <label class="modal-field"><span>Application title</span>
-        <input id="appTitle" class="modal-input" value="${escapeHtml(settings.appTitle || 'FormForge')}" placeholder="FormForge" maxlength="60" required>
+        <input id="appTitle" class="modal-input" value="${escapeHtml(settings.appTitle || DEFAULT_APP_TITLE)}" placeholder="${DEFAULT_APP_TITLE}" maxlength="60" required>
         <small class="modal-help">Use 1 to 60 characters.</small>
       </label>
       <div class="modal-section"><h3>Export</h3><p>Where the save dialog opens and which format is selected first.</p></div>

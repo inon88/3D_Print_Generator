@@ -1,6 +1,6 @@
-# FormForge
+# BonaStudio
 
-FormForge adalah aplikasi desktop lokal untuk mengubah parameter tool OpenSCAD dan melihat pratinjau model.
+BonaStudio adalah aplikasi desktop lokal untuk mengubah parameter tool OpenSCAD dan melihat pratinjau model.
 
 The application interface is available in English.
 
@@ -16,7 +16,7 @@ npm install
 npm start
 ```
 
-Saat pertama dijalankan, FormForge menambahkan contoh bracket ke pustaka lokal. Saat `npm start` atau proses packaging pertama kali dijalankan, build mengunduh dan memverifikasi OpenSCAD WebAssembly. Pengguna installer tidak perlu memasang OpenSCAD atau CLI tambahan.
+Saat pertama dijalankan, BonaStudio menambahkan contoh bracket ke pustaka lokal. Saat `npm start` atau proses packaging pertama kali dijalankan, build mengunduh dan memverifikasi OpenSCAD WebAssembly. Pengguna installer tidak perlu memasang OpenSCAD atau CLI tambahan.
 
 ## Build aplikasi desktop
 
@@ -61,11 +61,11 @@ Untuk sekadar mengemas aplikasi tanpa membuat installer, jalankan `npm run packa
 
 ## Alur kerja
 
-1. **Add tool** (sidebar, `Ctrl+O`) — pilih sumber: **SCAD file**, **Project folder** (untuk model yang memakai `include`/`use`, gambar, SVG, atau mesh lewat `surface()`/`import()`), atau **From URL** (tautan HTTPS langsung ke `.scad`). FormForge menyimpan salinan di pustaka lokal.
+1. **Add tool** (sidebar, `Ctrl+O`) — pilih sumber: **SCAD file**, **Project folder** (untuk model yang memakai `include`/`use`, gambar, SVG, atau mesh lewat `surface()`/`import()`), atau **From URL** (tautan HTTPS langsung ke `.scad`). BonaStudio menyimpan salinan di pustaka lokal.
 2. **Parameters** (sidebar) — ubah parameter Customizer yang terdeteksi (slider, dropdown berlabel, sakelar, teks, vektor). Grup `/* [Nama] */` tampil sebagai bagian yang bisa dilipat. Simpan kombinasi nilai sebagai **preset**, muat ulang, timpa, atau hapus. **Add custom parameter** untuk variabel yang tidak terdeteksi otomatis.
 3. **Preview** — pratinjau diperbarui otomatis setelah jeda singkat (atau tekan **Render preview**, `Ctrl+Enter`). Hasil terakhir tetap tampil saat render berjalan atau gagal; galat OpenSCAD lengkap bisa dibuka di panel galat. Navigasi: tombol tengah mouse = orbit, Shift + tombol tengah = pan, roda = zoom, `F` = bingkai model, `G` = grid.
 4. **Export** (kanan atas, `Ctrl+E`) — STL biner (geometri) atau 3MF (geometri dengan warna). Ekspor selalu dirender ulang pada **resolusi maksimum** (`$fn=0`, `$fa=2°`, `$fs=0.2 mm`) yang menimpa `$fn`/`$fa`/`$fs` global milik file sumber; lengkung menyimpang ≤ ~0,015 mm dari bentuk ideal, lebih halus dari yang dapat dicetak printer. Bila model sangat berat (mis. `minkowski` dengan bola) melebihi 5 menit, ekspor otomatis memakai resolusi bawaan model dan memberi tahu pengguna.
-5. **Slicer** — printer, material, dan seluruh setting cetak diatur di slicer pilihan Anda. FormForge tidak menyimpan profil cetak, tidak melakukan slice, dan tidak membuat G-code.
+5. **Slicer** — printer, material, dan seluruh setting cetak diatur di slicer pilihan Anda. BonaStudio tidak menyimpan profil cetak, tidak melakukan slice, dan tidak membuat G-code.
 
 ## Catatan fitur
 
@@ -78,4 +78,4 @@ Format ekspor hanya STL dan 3MF. STEP tidak didukung: OpenSCAD menghitung geomet
 
 Mesin render OpenSCAD WebAssembly diunduh dari server snapshot resmi saat build, checksum SHA-256 diverifikasi, lalu file mesin disertakan dalam installer.
 
-Semua sumber pustaka dan pengaturan aplikasi disimpan dalam direktori data pengguna Electron. Impor tautan akan mengunduh salinan lokal; penghapusan tool hanya menghapus salinan milik FormForge.
+Semua sumber pustaka dan pengaturan aplikasi disimpan dalam direktori data pengguna Electron. Impor tautan akan mengunduh salinan lokal; penghapusan tool hanya menghapus salinan milik BonaStudio.

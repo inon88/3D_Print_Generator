@@ -1,6 +1,7 @@
 {
-  "name": "formforge",
+  "name": "bonastudio",
   "version": "0.1.0",
+  "productName": "BonaStudio",
   "description": "A local-first parametric OpenSCAD tool library",
   "engines": {
     "node": ">=22.12.0"
@@ -26,8 +27,8 @@
     "esbuild": "^0.25.10"
   },
   "build": {
-    "appId": "com.formforge.app",
-    "productName": "FormForge",
+    "appId": "com.bonastudio.app",
+    "productName": "BonaStudio",
     "directories": {
       "output": "release"
     },
