@@ -1,0 +1,109 @@
+# Builds BonaStudio installers on GitHub-hosted runners.
+# Run it from the Actions tab: "Build installers" > Run workflow > choose a platform.
+# Installers are attached to the run as downloadable artifacts; nothing is published.
+name: Build installers
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: Platform to build
+        type: choice
+        options: [macos, windows, linux, all]
+        default: macos
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}-${{ inputs.platform }}
+  cancel-in-progress: true
+
+env:
+  # No signing certificates are configured; skip keychain lookups instead of failing.
+  CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+jobs:
+  macos:
+    if: inputs.platform == 'macos' || inputs.platform == 'all'
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - name: Cache OpenSCAD WASM
+        uses: actions/cache@v4
+        with:
+          path: vendor/openscad-wasm
+          key: openscad-wasm-${{ hashFiles('scripts/fetch-openscad-wasm.cjs') }}
+      - run: npm ci
+      - run: npm test
+      - name: Build DMG (Apple silicon + Intel)
+        run: npm run dist:mac -- --publish never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BonaStudio-macos
+          path: release/*.dmg
+          if-no-files-found: error
+          retention-days: 14
+
+  windows:
+    if: inputs.platform == 'windows' || inputs.platform == 'all'
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - name: Cache OpenSCAD WASM
+        uses: actions/cache@v4
+        with:
+          path: vendor/openscad-wasm
+          key: openscad-wasm-${{ hashFiles('scripts/fetch-openscad-wasm.cjs') }}
+      - run: npm ci
+      - run: npm test
+      - name: Build NSIS installer
+        run: npm run dist:win -- --publish never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BonaStudio-windows
+          path: release/*.exe
+          if-no-files-found: error
+          retention-days: 14
+
+  linux:
+    if: inputs.platform == 'linux' || inputs.platform == 'all'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - name: Cache OpenSCAD WASM
+        uses: actions/cache@v4
+        with:
+          path: vendor/openscad-wasm
+          key: openscad-wasm-${{ hashFiles('scripts/fetch-openscad-wasm.cjs') }}
+      - run: npm ci
+      - run: npm test
+      - name: Build AppImage
+        run: npm run dist:linux -- --publish never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BonaStudio-linux
+          path: release/*.AppImage
+          if-no-files-found: error
+          retention-days: 14

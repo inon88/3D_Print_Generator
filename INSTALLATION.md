@@ -201,6 +201,21 @@ Catatan:
 
 ---
 
+## 5b. Build lewat GitHub Actions (tanpa Mac/Linux)
+
+Workflow `.github/workflows/build.yml` mengompilasi installer di mesin cloud GitHub, termasuk DMG macOS dari komputer Windows.
+
+1. Buka repo di GitHub › tab **Actions** › **Build installers** › **Run workflow**.
+2. Pilih platform: `macos`, `windows`, `linux`, atau `all`, lalu **Run workflow**.
+3. Setelah selesai (± 5–10 menit), buka run tersebut › bagian **Artifacts** › unduh `BonaStudio-macos` (berisi DMG arm64 & x64), `BonaStudio-windows`, atau `BonaStudio-linux`. File berupa ZIP; ekstrak untuk mendapatkan installer.
+
+Catatan:
+- Artifact disimpan 14 hari. Tidak ada rilis yang dipublikasikan.
+- Pada repo private, build memakai kuota menit Actions akun; menit runner macOS dihitung 10×, Windows 2×, Linux 1×.
+- Hasil build tidak ditandatangani (lihat catatan Gatekeeper/SmartScreen di atas). Untuk penandatanganan, simpan sertifikat sebagai *repository secret* (`CSC_LINK`, `CSC_KEY_PASSWORD`, `APPLE_ID`, …) — jangan pernah commit sertifikat ke repo.
+
+---
+
 ## 6. Apa yang terjadi saat build
 
 1. `scripts/fetch-openscad-wasm.cjs` mengunduh `OpenSCAD-<versi>-WebAssembly-web.zip` dari `https://files.openscad.org/snapshots/`, memverifikasi checksum SHA-256, lalu mengekstraknya ke `vendor/openscad-wasm/`. Langkah ini dilewati bila mesin sudah ada.
