@@ -19,6 +19,9 @@ const ui = {
   toolCount: $('#toolCount'),
   toolMeta: $('#toolMeta'),
   deleteToolButton: $('#deleteToolButton'),
+  librarySection: $('.library-section'),
+  modeLithophane: $('#modeLithophane'),
+  modeTools: $('#modeTools'),
   parameterList: $('#parameterList'),
   parameterCount: $('#parameterCount'),
   parameterHint: $('#parameterHint'),
@@ -68,6 +71,7 @@ const PRESET_STORAGE_PREFIX = 'formforge:presets:';
 const state = {
   tools: [],
   activeToolId: '',
+  lastScadToolId: '',   // shown in the (disabled) dropdown while the Lithophane mode is active
   values: {},
   baselineValues: {},
   dirty: false,
@@ -321,6 +325,36 @@ function activeTool() {
   return state.tools.find(tool => tool.id === state.activeToolId) || null;
 }
 
+// The Lithophane generator (JavaScript, no OpenSCAD) has its own mode above the tool dropdown;
+// the dropdown lists only the SCAD tools and is disabled while the generator is active.
+const isGeneratorTool = tool => tool?.kind === 'generator';
+const scadTools = () => state.tools.filter(tool => !isGeneratorTool(tool));
+const generatorTool = () => state.tools.find(isGeneratorTool) || null;
+
+function updateModeSwitch() {
+  const generatorActive = isGeneratorTool(activeTool());
+  ui.modeLithophane.setAttribute('aria-checked', String(generatorActive));
+  ui.modeTools.setAttribute('aria-checked', String(!generatorActive));
+  ui.modeLithophane.disabled = !generatorTool();
+  ui.librarySection.classList.toggle('is-generator', generatorActive);
+  ui.toolSelect.disabled = generatorActive || !scadTools().length;
+}
+
+function chooseMode(mode) {
+  if (mode === 'lithophane') {
+    const generator = generatorTool();
+    if (generator && !isGeneratorTool(activeTool())) switchTool(generator.id);
+  } else if (isGeneratorTool(activeTool())) {
+    const tools = scadTools();
+    const next = tools.find(tool => tool.id === state.lastScadToolId) || tools[0];
+    if (next) switchTool(next.id);
+    else {
+      updateModeSwitch();
+      openAddToolModal();
+    }
+  }
+}
+
 function defaultValues(tool) {
   // Clone so editing nested values never mutates the manifest defaults used by "Restore default values".
   return structuredClone(Object.fromEntries(toolParameters(tool).map(parameter => [parameter.name, parameter.default])));
@@ -442,6 +476,7 @@ function renderPresetSelect(selectedId = '') {
 }
 
 function toolSourceLabel(tool) {
+  if (tool.kind === 'generator') return 'Built-in generator';
   if (tool.sourceUrl) return 'Imported from URL';
   if (String(tool.entry || '').startsWith('project')) return 'Project folder';
   if (tool.category === 'Example') return 'Example tool';
@@ -458,17 +493,19 @@ function refreshToolSelect() {
   const nameCounts = new Map();
   state.tools.forEach(tool => nameCounts.set(tool.name, (nameCounts.get(tool.name) || 0) + 1));
   const nameIndexes = new Map();
-  ui.toolSelect.innerHTML = state.tools.length
-    ? state.tools.map(tool => {
+  const tools = scadTools();
+  ui.toolSelect.innerHTML = tools.length
+    ? tools.map(tool => {
       const index = (nameIndexes.get(tool.name) || 0) + 1;
       nameIndexes.set(tool.name, index);
       const label = nameCounts.get(tool.name) > 1 ? `${tool.name} (${index})` : tool.name;
       return `<option value="${escapeHtml(tool.id)}">${escapeHtml(label)}</option>`;
     }).join('')
     : '<option value="">No tools yet</option>';
-  ui.toolSelect.disabled = !state.tools.length;
-  ui.toolCount.textContent = String(state.tools.length);
-  if (state.tools.some(tool => tool.id === previous)) ui.toolSelect.value = previous;
+  ui.toolCount.textContent = String(tools.length);
+  const shown = tools.some(tool => tool.id === previous) ? previous : state.lastScadToolId;
+  if (tools.some(tool => tool.id === shown)) ui.toolSelect.value = shown;
+  updateModeSwitch();
 }
 
 function setEmptyState(title, message, actions = [], busy = false) {
@@ -656,14 +693,17 @@ function parameterMarkup(parameter, value) {
       '<p class="parameter-description">Choose a font installed on this device. The preview uses the selected font.</p>' +
     '</div>';
   }
-  if (parameter.name === 'relief_image_file') {
+  if (parameter.name === 'relief_image_file' || parameter.name === LITHOPHANE_IMAGE_PARAMETER) {
+    const hint = parameter.name === LITHOPHANE_IMAGE_PARAMETER
+      ? 'PNG, JPG, or WebP. Dark areas become thick, light areas thin: adjust levels and contrast in the next step.'
+      : 'PNG, JPG, or WebP. Brightness becomes height: adjust levels and contrast in the next step.';
     return `<div class="parameter-control">
       <div class="parameter-label-row"><label class="parameter-label" for="param-${name}">${label}</label></div>
       <div class="file-picker-row">
         <input id="param-${name}" class="parameter-text" type="text" data-param="${name}" value="${escapeHtml(displayValue ?? '')}">
         <button class="file-picker-button" type="button" data-file-picker="relief" data-param="${name}">Choose image</button>
       </div>
-      <p class="parameter-description">PNG, JPG, or WebP. Brightness becomes height: adjust levels and contrast in the next step.</p>
+      <p class="parameter-description">${hint}</p>
     </div>`;
   }
   if (parameter.name === 'icon_left_file' || parameter.name === 'icon_right_file') {
@@ -736,7 +776,7 @@ async function handleParameterFilePicker(button) {
   const kind = button.dataset.filePicker;
   const parameterName = button.dataset.param;
   const tool = activeTool();
-  if (tool && kind === 'relief' && parameterName === 'relief_image_file') {
+  if (tool && kind === 'relief' && (parameterName === 'relief_image_file' || parameterName === LITHOPHANE_IMAGE_PARAMETER)) {
     const file = await window.formforge.chooseParameterFile('relief');
     if (file) openReliefModal(tool, parameterName, file);
     return;
@@ -917,6 +957,9 @@ function openImageConversionModal(tool, parameterName, file) {
 // Relief (filament painting): brightness → height map PNG for surface(). Resolution is the
 // longest side in pixels; OpenSCAD renders one point per pixel.
 const RELIEF_SIDES = { low: 160, medium: 260, high: 360, max: 600 };
+// The lithophane generator builds its own mesh, so it takes more pixels than surface().
+const LITHOPHANE_IMAGE_PARAMETER = 'lithophane_image_file';
+const LITHOPHANE_SIDES = { low: 600, medium: 800, high: 1000, max: 1200 };
 
 function openReliefModal(tool, parameterName, file) {
   releaseConversionUrls();
@@ -926,9 +969,16 @@ function openReliefModal(tool, parameterName, file) {
   const decoded = new Map();
   let current = null;
   let revision = 0;
-  openModal('Prepare relief', `${file.fileName} · bright areas become high, dark areas stay low`, `
+  const lithophane = parameterName === LITHOPHANE_IMAGE_PARAMETER;
+  const sides = lithophane ? LITHOPHANE_SIDES : RELIEF_SIDES;
+  const resolutionOptions = [['low', 'Low'], ['medium', 'Medium'], ['high', 'High'], ['max', 'Maximum']]
+    .map(([value, name]) => `<option value="${value}"${value === (lithophane ? 'high' : 'medium') ? ' selected' : ''}>${name} · ${sides[value]} px</option>`).join('');
+  const note = lithophane
+    ? 'The preview shows the picture as it looks lit from behind: dark areas print thick. Print in white PLA with 100 % infill, standing upright, at 0.1–0.12 mm layers.'
+    : 'Higher resolution shows finer detail but renders more slowly. For filament painting, print with thin layers (0.08 mm) and light filaments on top of dark ones.';
+  openModal(lithophane ? 'Prepare lithophane image' : 'Prepare relief', `${file.fileName} · ${lithophane ? 'dark areas become thick, light areas thin' : 'bright areas become high, dark areas stay low'}`, `
     <div class="trace-options relief-options">
-      <label class="modal-field"><span>Resolution</span><select id="reliefResolution" class="modal-select"><option value="low">Low · 160 px</option><option value="medium" selected>Medium · 260 px</option><option value="high">High · 360 px</option><option value="max">Maximum · 600 px</option></select></label>
+      <label class="modal-field"><span>Resolution</span><select id="reliefResolution" class="modal-select">${resolutionOptions}</select></label>
       <label class="modal-field"><span>Mid tones</span><select id="reliefGamma" class="modal-select"><option value="0.6">Much brighter</option><option value="0.8">Brighter</option><option value="1" selected>Neutral</option><option value="1.25">Darker</option><option value="1.6">Much darker</option></select></label>
       <label class="trace-toggle"><input id="reliefLevels" class="toggle" type="checkbox" checked><span>Auto levels</span></label>
       <label class="trace-toggle"><input id="reliefInvert" class="toggle" type="checkbox"><span>Invert</span></label>
@@ -937,7 +987,7 @@ function openReliefModal(tool, parameterName, file) {
       <figure><div class="trace-frame"><img src="${originalUrl}" alt="Original image"></div><figcaption>Original</figcaption></figure>
       <figure><div class="trace-frame"><img id="reliefResult" alt="Height map"></div><figcaption id="reliefCaption">Height map</figcaption></figure>
     </div>
-    <div class="modal-note">Higher resolution shows finer detail but renders more slowly. For filament painting, print with thin layers (0.08 mm) and light filaments on top of dark ones.</div>
+    <div class="modal-note">${note}</div>
     <div id="reliefError"></div>
     <div class="modal-actions"><button class="button button-secondary" type="button" data-close>Cancel</button><button id="confirmRelief" class="button button-primary" type="button" disabled>Use image</button></div>`, 'modal-trace');
 
@@ -945,7 +995,7 @@ function openReliefModal(tool, parameterName, file) {
     const mine = ++revision;
     $('#reliefError').innerHTML = '';
     try {
-      const side = RELIEF_SIDES[$('#reliefResolution').value];
+      const side = sides[$('#reliefResolution').value];
       if (!decoded.has(side)) decoded.set(side, await decodeRasterFile(file, side));
       const { width, height, data } = decoded.get(side);
       const map = prepareHeightmap(data, width, height, {
@@ -967,7 +1017,7 @@ function openReliefModal(tool, parameterName, file) {
       const url = URL.createObjectURL(blob);
       conversionUrls.push(url);
       $('#reliefResult').src = url;
-      $('#reliefCaption').textContent = `Height map · ${map.width - 2} × ${map.height - 2} px`;
+      $('#reliefCaption').textContent = `${lithophane ? 'Lithophane' : 'Height map'} · ${map.width - 2} × ${map.height - 2} px`;
       current = map;
       $('#confirmRelief').disabled = false;
     } catch (error) {
@@ -987,7 +1037,7 @@ function openReliefModal(tool, parameterName, file) {
       updateParameter(parameterName, saved.reference, null);
       closeModal();
       releaseConversionUrls();
-      toast('Relief image added to this tool.');
+      toast(lithophane ? 'Lithophane image added.' : 'Relief image added to this tool.');
     } catch (error) {
       button.disabled = false;
       showModalError('reliefError', error.message || 'Could not save the relief image.');
@@ -1115,6 +1165,12 @@ function renderParameters() {
   for (const control of [ui.addParameterButton, ui.resetParamsButton, ui.savePresetButton, ui.presetSelect, ui.deleteToolButton, ui.exportButton, ui.renderButton]) {
     control.disabled = !tool;
   }
+  // The built-in generator cannot be deleted and has a fixed set of parameters.
+  if (isGeneratorTool(tool)) {
+    ui.deleteToolButton.disabled = true;
+    ui.addParameterButton.disabled = true;
+  }
+  ui.deleteToolButton.title = isGeneratorTool(tool) ? 'The built-in Lithophane generator cannot be deleted' : 'Delete tool';
   if (!tool) {
     ui.parameterCount.textContent = '0';
     ui.parameterList.innerHTML = '<div class="empty-parameters">Add a tool to start adjusting parameters. A tool is one OpenSCAD model — a single <b>.scad</b> file, a project folder, or a link.</div>';
@@ -1260,12 +1316,17 @@ function applyValues(tool, values) {
   renderParameters();
 }
 
+// Generator tools (lithophane) build their mesh in JavaScript and do not need OpenSCAD.
+function canRender(tool) {
+  return state.openscadAvailable || tool?.kind === 'generator';
+}
+
 function showIdleEmptyState(tool) {
   if (!state.tools.length) {
     setEmptyState('Add your first tool', 'Each tool is an OpenSCAD model with adjustable parameters. Import a .scad file, a project folder, or a direct link.', [{ id: 'add-tool', label: 'Add tool', primary: true }]);
   } else if (!tool) {
     setEmptyState('No tool selected', 'Choose a tool from the library.');
-  } else if (!state.openscadAvailable) {
+  } else if (!canRender(tool)) {
     setEmptyState('Render engine missing', 'The bundled OpenSCAD WebAssembly engine was not found. Rebuild the app while connected to the internet.');
   } else {
     setEmptyState('Ready to preview', `Render ${tool.name} to see the model.`, [{ id: 'render', label: 'Render preview', primary: true }]);
@@ -1302,7 +1363,7 @@ async function generatePreview() {
     toast('Select or add a tool first.', true);
     return;
   }
-  if (!state.openscadAvailable) {
+  if (!canRender(tool)) {
     setRenderState('Engine missing', 'error');
     showIdleEmptyState(tool);
     return;
@@ -1366,7 +1427,7 @@ async function generatePreview() {
 }
 
 function queuePreview() {
-  if (!state.settings?.autoPreview || !state.openscadAvailable || !activeTool()) return;
+  if (!state.settings?.autoPreview || !activeTool() || !canRender(activeTool())) return;
   clearTimeout(state.renderTimer);
   state.renderTimer = setTimeout(generatePreview, state.settings.previewDelay || 700);
   setRenderState('Waiting for changes…', 'pending');
@@ -2021,13 +2082,18 @@ function switchTool(toolId, force = false) {
   if (toolId === state.activeToolId && !force) return true;
   const current = activeTool();
   if (!force && current && state.dirty && !confirm('You have unsaved parameter changes. Switch tools and discard them?')) {
-    ui.toolSelect.value = state.activeToolId;
+    if (!isGeneratorTool(current)) ui.toolSelect.value = state.activeToolId;
+    else if (state.lastScadToolId) ui.toolSelect.value = state.lastScadToolId;
+    updateModeSwitch();
     return false;
   }
   clearTimeout(state.renderTimer);
   state.activeToolId = toolId;
-  ui.toolSelect.value = toolId;
   const tool = activeTool();
+  // The dropdown keeps showing the last SCAD tool while the generator is active.
+  if (tool && !isGeneratorTool(tool)) state.lastScadToolId = toolId;
+  if (!isGeneratorTool(tool)) ui.toolSelect.value = toolId;
+  updateModeSwitch();
   ui.presetSelect.value = '';
   ui.parameterList.replaceChildren();
   applyValues(tool, defaultValues(tool));
@@ -2720,7 +2786,7 @@ async function deleteActiveTool() {
     if (!result.deleted) return;
     try { localStorage.removeItem(presetStorageKey(tool)); } catch {}
     refreshToolSelect();
-    switchTool(state.tools[0]?.id || '', true);
+    switchTool(scadTools()[0]?.id || generatorTool()?.id || '', true);
     setStatus(`"${tool.name}" removed from the library`);
     toast(`"${tool.name}" removed from the library.`);
   } catch (error) {
@@ -2749,6 +2815,8 @@ function toggleGrid() {
 $('#addToolButton').addEventListener('click', openAddToolModal);
 ui.deleteToolButton.addEventListener('click', deleteActiveTool);
 ui.toolSelect.addEventListener('change', () => switchTool(ui.toolSelect.value));
+ui.modeLithophane.addEventListener('click', () => chooseMode('lithophane'));
+ui.modeTools.addEventListener('click', () => chooseMode('tools'));
 ui.renderButton.addEventListener('click', generatePreview);
 ui.resetParamsButton.addEventListener('click', () => {
   const tool = activeTool();
@@ -2831,7 +2899,7 @@ async function initialize() {
     updatePlates();
     updateAppStatus();
     refreshToolSelect();
-    switchTool(state.tools[0]?.id || '', true);
+    switchTool(scadTools()[0]?.id || generatorTool()?.id || '', true);
     setStatus(state.openscadAvailable ? 'All data is stored locally on this device' : 'Render engine missing — rebuild the app to enable previews', !state.openscadAvailable);
     resizeViewport();
   } catch (error) {

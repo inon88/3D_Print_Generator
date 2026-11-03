@@ -14,7 +14,7 @@
     "dist:win": "npm run build && electron-builder --win nsis --x64",
     "dist:mac": "npm run build && electron-builder --mac dmg --x64 --arm64",
     "dist:linux": "npm run build && electron-builder --linux AppImage --x64",
-    "check": "node --check main.cjs && node --check preload.cjs && node --check scad-render-worker.cjs && node --check scripts/fetch-openscad-wasm.cjs && node --check parameters.cjs && node --check scad-assets.cjs && node --check font-name.cjs && node --check raster-to-svg.cjs && node --check image-trace.cjs && node --check image-trace-worker.cjs && node --check svg-layers.cjs && node --check icon-library.cjs && node --check heightmap.cjs && node --check transform.cjs && node --check mesh-transform.cjs && npm test && npm run build",
+    "check": "node --check main.cjs && node --check preload.cjs && node --check scad-render-worker.cjs && node --check scripts/fetch-openscad-wasm.cjs && node --check parameters.cjs && node --check scad-assets.cjs && node --check font-name.cjs && node --check raster-to-svg.cjs && node --check image-trace.cjs && node --check image-trace-worker.cjs && node --check svg-layers.cjs && node --check icon-library.cjs && node --check heightmap.cjs && node --check transform.cjs && node --check mesh-transform.cjs && node --check lithophane.cjs && node --check lithophane-worker.cjs && npm test && npm run build",
     "test": "node --test"
   },
   "dependencies": {
@@ -42,7 +42,7 @@
       "!vendor{,/**/*}",
       "!release{,/**/*}",
       "!renderer.js",
-      "!rancangan.md",
+      "!rancangan*.md",
       "!README.md",
       "!INSTALLATION.md",
       "!CLAUDE.md",
@@ -91,7 +91,12 @@
       "scad-assets.cjs",
       "image-trace-worker.cjs",
       "image-trace.cjs",
-      "node_modules/@visioncortex/vtracer/**"
+      "node_modules/@visioncortex/vtracer/**",
+      "lithophane-worker.cjs",
+      "lithophane.cjs",
+      "heightmap.cjs",
+      "mesh-transform.cjs",
+      "transform.cjs"
     ],
     "extraResources": [
       {

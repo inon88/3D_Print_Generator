@@ -10,7 +10,8 @@ const { exportsSeparateObjects, findMissingReferencedAssets } = require('./scad-
 const { fontFamiliesFromArrayBuffer, fontSupportsOpenScadWasm } = require('./font-name.cjs');
 const { validateTraceRequest } = require('./image-trace.cjs');
 const { indexIconPacks, readIcon } = require('./icon-library.cjs');
-const { validateHeightmapPng } = require('./heightmap.cjs');
+const { validateHeightmapPng, LITHOPHANE_LIMITS } = require('./heightmap.cjs');
+const { LITHOPHANE_GENERATOR_VERSION, LITHOPHANE_IMAGE_PARAMETER, LITHOPHANE_TOOL, lithophaneManifest } = require('./lithophane.cjs');
 const { normalizeTransformPayload, parseItemEchoes, parsePlateCount, MAX_EXPORT_PLATES } = require('./transform.cjs');
 const { applyMeshTransform, groupObjectsAsParts } = require('./mesh-transform.cjs');
 
@@ -127,7 +128,29 @@ async function ensureLibrary() {
     }
     await fs.writeFile(initialized, new Date().toISOString(), 'utf8');
   }
+  await ensureGeneratorTools(tools);
 }
+
+// Built-in generator tools (no .scad; the mesh is built in JavaScript). They have their own
+// mode in the sidebar and cannot be deleted, so a missing one is created again.
+async function ensureGeneratorTools(tools) {
+  const directory = path.join(tools, LITHOPHANE_TOOL.id);
+  try {
+    await fs.access(path.join(directory, 'manifest.json'));
+    return;
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
+  try {
+    await fs.mkdir(directory, { recursive: true });
+    await fs.writeFile(path.join(directory, LITHOPHANE_TOOL.entry), JSON.stringify({ generator: LITHOPHANE_TOOL.generator }), 'utf8');
+    await fs.writeFile(path.join(directory, 'manifest.json'), JSON.stringify(lithophaneManifest(), null, 2), 'utf8');
+  } catch (error) {
+    console.error('Could not create the lithophane generator:', error);
+  }
+}
+
+const isGenerator = manifest => manifest?.kind === 'generator';
 
 function sanitizeName(name) {
   return String(name || 'model').replace(/[<>:"/\\|?*\x00-\x1f]/g, '-').trim().slice(0, 80) || 'model';
@@ -165,6 +188,16 @@ async function readManifest(toolId) {
   const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8'));
   const sourcePath = path.resolve(path.dirname(manifestPath), manifest.entry);
   if (!sourcePath.startsWith(`${path.dirname(manifestPath)}${path.sep}`)) throw new Error('Invalid tool path.');
+  if (isGenerator(manifest)) {
+    if (manifest.generator !== LITHOPHANE_TOOL.generator) throw new Error('Unknown generator tool.');
+    // Parameters come from lithophane.cjs; refresh them when the generator changes.
+    if (manifest.generatorVersion !== LITHOPHANE_GENERATOR_VERSION) {
+      const fresh = lithophaneManifest(manifest.createdAt);
+      Object.assign(manifest, { parameters: fresh.parameters, generatorVersion: fresh.generatorVersion });
+      await fs.writeFile(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
+    }
+    return { manifest, manifestPath, sourcePath };
+  }
   if (manifest.parameterParserVersion !== PARAMETER_PARSER_VERSION) {
     const source = await fs.readFile(sourcePath, 'utf8');
     const parsedParameters = parseParameters(source);
@@ -277,17 +310,8 @@ async function saveTool(source, name, category, sourceUrl = '') {
 
 class RenderTimeoutError extends Error {}
 
-// Validates the tool, its assets, parameter values, and fonts once; the result can be rendered several times.
-async function prepareRenderJob(toolId, values) {
-  const { manifest, sourcePath } = await readManifest(toolId);
-  const source = await fs.readFile(sourcePath, 'utf8');
-  const sourceSetsResolution = /\$(?:fn|fa|fs)\s*=/m.test(source);
-  const separateObjects = exportsSeparateObjects(source);
-  const missingAssets = await findMissingReferencedAssets(source, path.dirname(sourcePath));
-  if (missingAssets.length) {
-    const listedAssets = missingAssets.map(asset => '"' + asset + '"').join(', ');
-    throw new Error('Required file(s) ' + listedAssets + ' could not be found. Re-import the complete OpenSCAD project with Add tool › Project folder, including any image or mesh files used by surface() or import().');
-  }
+// Checks every value against the manifest (type, range, options); defaults fill the gaps.
+function validateParameterValues(manifest, values) {
   const params = {};
   let nestedFontNames = [];
   const nestedParameterOverrides = {};
@@ -316,6 +340,21 @@ async function prepareRenderJob(toolId, values) {
     }
     params[parameter.name] = value;
   }
+  return { params, nestedFontNames, nestedParameterOverrides };
+}
+
+// Validates the tool, its assets, parameter values, and fonts once; the result can be rendered several times.
+async function prepareRenderJob(toolId, values) {
+  const { manifest, sourcePath } = await readManifest(toolId);
+  const source = await fs.readFile(sourcePath, 'utf8');
+  const sourceSetsResolution = /\$(?:fn|fa|fs)\s*=/m.test(source);
+  const separateObjects = exportsSeparateObjects(source);
+  const missingAssets = await findMissingReferencedAssets(source, path.dirname(sourcePath));
+  if (missingAssets.length) {
+    const listedAssets = missingAssets.map(asset => '"' + asset + '"').join(', ');
+    throw new Error('Required file(s) ' + listedAssets + ' could not be found. Re-import the complete OpenSCAD project with Add tool › Project folder, including any image or mesh files used by surface() or import().');
+  }
+  const { params, nestedFontNames, nestedParameterOverrides } = validateParameterValues(manifest, values);
 
   const wasmDirectory = app.isPackaged
     ? path.join(process.resourcesPath, 'openscad-wasm')
@@ -390,13 +429,70 @@ function runRenderWorker(job, format, quality, timeoutMs) {
   });
 }
 
+// Lithophane generator: same reply shape as runRenderWorker, built by lithophane-worker.cjs.
+async function prepareGeneratorJob(manifest, sourcePath, values) {
+  const { params } = validateParameterValues(manifest, values);
+  const reference = params[LITHOPHANE_IMAGE_PARAMETER];
+  let imagePath = null;
+  if (reference) {
+    const toolDirectory = path.dirname(sourcePath);
+    imagePath = path.resolve(toolDirectory, reference);
+    if (!imagePath.startsWith(toolDirectory + path.sep) || path.extname(imagePath).toLowerCase() !== '.png') {
+      throw new Error('The lithophane image is invalid. Choose the image again.');
+    }
+    try {
+      await fs.access(imagePath);
+    } catch {
+      throw new Error('The lithophane image could not be found. Choose the image again.');
+    }
+  }
+  const workerPath = app.isPackaged
+    ? path.join(process.resourcesPath, 'app.asar.unpacked', 'lithophane-worker.cjs')
+    : path.join(__dirname, 'lithophane-worker.cjs');
+  return { workerPath, imagePath, params, name: manifest.name };
+}
+
+function runGeneratorWorker(job, format, preview, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(job.workerPath, {
+      workerData: { imagePath: job.imagePath, values: job.params, format, preview, name: job.name }
+    });
+    let settled = false;
+    const finish = (error, result) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      worker.terminate().catch(() => {});
+      if (error) reject(error);
+      else resolve({ output: Buffer.from(result.output), items: parseItemEchoes(result.itemEchoes), plates: null, info: result.info });
+    };
+    const timer = setTimeout(() => finish(new RenderTimeoutError(`The lithophane took longer than ${Math.round(timeoutMs / 1000)} seconds. Use a larger Detail value.`)), timeoutMs);
+    worker.once('message', result => {
+      if (result.error) finish(new Error(result.error));
+      else if (!(result.output instanceof ArrayBuffer)) finish(new Error('The lithophane generator returned an invalid mesh.'));
+      else finish(null, result);
+    });
+    worker.once('error', error => finish(new Error('The lithophane generator failed: ' + error.message)));
+    worker.once('exit', code => {
+      if (!settled) finish(new Error('The lithophane generator exited with code ' + code + '.'));
+    });
+  });
+}
+
 async function renderPreview(toolId, values) {
+  const { manifest, sourcePath } = await readManifest(toolId);
+  if (isGenerator(manifest)) return runGeneratorWorker(await prepareGeneratorJob(manifest, sourcePath, values), '3mf', true, PREVIEW_TIMEOUT_MS);
   const job = await prepareRenderJob(toolId, values);
   // Preview is rendered as 3MF so model colors are visible in the viewer.
   return runRenderWorker(job, '3mf', job.sourceSetsResolution ? null : PREVIEW_QUALITY, PREVIEW_TIMEOUT_MS);
 }
 
 async function renderExport(toolId, values, format) {
+  const { manifest, sourcePath } = await readManifest(toolId);
+  if (isGenerator(manifest)) {
+    const { output } = await runGeneratorWorker(await prepareGeneratorJob(manifest, sourcePath, values), format, false, EXPORT_TIMEOUT_MS);
+    return { output, plates: null, quality: 'maximum', separateObjects: false };
+  }
   const job = await prepareRenderJob(toolId, values);
   try {
     const { output, plates } = await runRenderWorker(job, format, EXPORT_QUALITY, EXPORT_TIMEOUT_MS);
@@ -668,6 +764,7 @@ ipcMain.handle('tools:import-url', async (_event, url) => {
 
 ipcMain.handle('tools:delete', async (_event, toolId) => {
   const { manifest } = await readManifest(toolId);
+  if (isGenerator(manifest)) throw new Error('The built-in Lithophane generator cannot be deleted.');
   const result = await dialog.showMessageBox(mainWindow, {
     type: 'warning',
     buttons: ['Delete tool', 'Cancel'],
@@ -687,6 +784,7 @@ ipcMain.handle('tools:add-parameter', async (_event, toolId, parameter) => {
     throw new Error('Parameter names may contain only letters, numbers, and underscores, and cannot start with a number.');
   }
   const { manifest, manifestPath } = await readManifest(toolId);
+  if (isGenerator(manifest)) throw new Error('Generator tools have a fixed set of parameters.');
   if ((manifest.parameters || []).some(item => item.name === parameter.name)) {
     throw new Error(`Parameter "${parameter.name}" already exists.`);
   }
@@ -757,8 +855,9 @@ ipcMain.handle('tools:save-icon-asset', async (_event, toolId, parameterName, sv
 
 // Heightmap PNGs for surface() reliefs, made by the renderer with heightmap.cjs.
 ipcMain.handle('tools:save-heightmap-asset', async (_event, toolId, parameterName, png) => {
-  if (parameterName !== 'relief_image_file') throw new Error('The selected relief parameter is not available.');
-  const { data } = validateHeightmapPng(png);
+  if (parameterName !== 'relief_image_file' && parameterName !== LITHOPHANE_IMAGE_PARAMETER) throw new Error('The selected relief parameter is not available.');
+  // Lithophane images feed the JavaScript generator, which handles more pixels than surface().
+  const { data } = validateHeightmapPng(png, parameterName === LITHOPHANE_IMAGE_PARAMETER ? LITHOPHANE_LIMITS : undefined);
   const { manifest, sourcePath } = await readManifest(toolId);
   const parameter = manifest.parameters.find(item => item.name === parameterName);
   if (!parameter || parameter.type !== 'string') throw new Error('The selected relief parameter is not available.');

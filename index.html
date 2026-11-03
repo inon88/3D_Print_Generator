@@ -26,6 +26,16 @@
         </div>
 
         <section class="sidebar-section library-section" aria-labelledby="libraryHeading">
+          <div id="modeSwitch" class="mode-switch" role="radiogroup" aria-label="Workspace">
+            <button id="modeLithophane" class="mode-option" type="button" role="radio" aria-checked="false" title="Lithophane generator (no OpenSCAD needed)">
+              <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="m4 16 5-5 4 4 2-2 5 5"/><circle cx="15.5" cy="8.5" r="1.5"/></svg>
+              Lithophane
+            </button>
+            <button id="modeTools" class="mode-option" type="button" role="radio" aria-checked="true" title="OpenSCAD tools from your library">
+              <svg viewBox="0 0 24 24"><path d="M12 3 4 7.5v9L12 21l8-4.5v-9L12 3Z"/><path d="M4 7.5 12 12l8-4.5M12 12v9"/></svg>
+              SCAD tools
+            </button>
+          </div>
           <div class="section-heading">
             <h2 id="libraryHeading">Tool library</h2>
             <span id="toolCount" class="count-badge">0</span>

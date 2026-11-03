@@ -5,6 +5,8 @@
 // Pure functions without Node or DOM dependencies, shared by the renderer and the main process.
 
 const HEIGHTMAP_LIMITS = Object.freeze({ minSide: 8, maxSide: 600, maxBytes: 2 * 1024 * 1024 });
+// Lithophane generator images (lithophane.cjs builds the mesh itself, so it can use more pixels).
+const LITHOPHANE_LIMITS = Object.freeze({ minSide: 8, maxSide: 1200, maxBytes: 4 * 1024 * 1024 });
 const PNG_SIGNATURE = [137, 80, 78, 71, 13, 10, 26, 10];
 
 // rgba: width*height*4 bytes. Returns { width, height, gray } with the border included
@@ -112,19 +114,59 @@ function encodeGrayPng({ width, height, gray }) {
 }
 
 // Checks the PNG header the main process writes as an asset: 8-bit grayscale within limits.
-function validateHeightmapPng(bytes) {
+function validateHeightmapPng(bytes, limits = HEIGHTMAP_LIMITS) {
   const data = bytes instanceof Uint8Array ? bytes : bytes instanceof ArrayBuffer ? new Uint8Array(bytes) : null;
   const fail = () => { throw new Error('The relief image could not be saved.'); };
-  if (!data || data.length < 33 || data.length > HEIGHTMAP_LIMITS.maxBytes) fail();
+  if (!data || data.length < 33 || data.length > limits.maxBytes) fail();
   if (PNG_SIGNATURE.some((byte, index) => data[index] !== byte)) fail();
   const type = String.fromCharCode(...data.subarray(12, 16));
   const read = offset => ((data[offset] << 24) | (data[offset + 1] << 16) | (data[offset + 2] << 8) | data[offset + 3]) >>> 0;
   const width = read(16);
   const height = read(20);
   if (type !== 'IHDR' || data[24] !== 8 || data[25] !== 0) fail();
-  if (width < HEIGHTMAP_LIMITS.minSide || height < HEIGHTMAP_LIMITS.minSide
-    || width > HEIGHTMAP_LIMITS.maxSide + 2 || height > HEIGHTMAP_LIMITS.maxSide + 2) fail();
+  if (width < limits.minSide || height < limits.minSide
+    || width > limits.maxSide + 2 || height > limits.maxSide + 2) fail();
   return { data, width, height };
 }
 
-module.exports = { HEIGHTMAP_LIMITS, prepareHeightmap, encodeGrayPng, validateHeightmapPng };
+// Reads an 8-bit grayscale PNG (as written by encodeGrayPng, or any non-interlaced one).
+// inflate(Uint8Array) → Uint8Array decompresses a zlib stream (node:zlib inflateSync in the
+// app, fflate unzlibSync on the web), which keeps this module free of dependencies.
+function decodeGrayPng(bytes, inflate) {
+  const { data, width, height } = validateHeightmapPng(bytes, LITHOPHANE_LIMITS);
+  if (data[28] !== 0) throw new Error('Interlaced height maps are not supported.');
+  const read = offset => ((data[offset] << 24) | (data[offset + 1] << 16) | (data[offset + 2] << 8) | data[offset + 3]) >>> 0;
+  const idat = [];
+  for (let offset = 8; offset + 8 <= data.length;) {
+    const length = read(offset);
+    const type = String.fromCharCode(...data.subarray(offset + 4, offset + 8));
+    if (offset + 12 + length > data.length) throw new Error('The height map is truncated.');
+    if (type === 'IDAT') idat.push(data.subarray(offset + 8, offset + 8 + length));
+    if (type === 'IEND') break;
+    offset += 12 + length;
+  }
+  const raw = inflate(concatBytes(idat));
+  if (raw.length < (width + 1) * height) throw new Error('The height map is truncated.');
+  const gray = new Uint8Array(width * height);
+  for (let y = 0; y < height; y++) {
+    const filter = raw[y * (width + 1)];
+    const line = raw.subarray(y * (width + 1) + 1, (y + 1) * (width + 1));
+    const out = gray.subarray(y * width, (y + 1) * width);
+    const up = y > 0 ? gray.subarray((y - 1) * width, y * width) : null;
+    for (let x = 0; x < width; x++) {
+      const a = x > 0 ? out[x - 1] : 0, b = up ? up[x] : 0, c = up && x > 0 ? up[x - 1] : 0;
+      let predictor = 0;
+      if (filter === 1) predictor = a;
+      else if (filter === 2) predictor = b;
+      else if (filter === 3) predictor = (a + b) >> 1;
+      else if (filter === 4) {
+        const p = a + b - c, pa = Math.abs(p - a), pb = Math.abs(p - b), pc = Math.abs(p - c);
+        predictor = pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
+      } else if (filter !== 0) throw new Error('The height map uses an unknown PNG filter.');
+      out[x] = (line[x] + predictor) & 255;
+    }
+  }
+  return { width, height, gray };
+}
+
+module.exports = { HEIGHTMAP_LIMITS, LITHOPHANE_LIMITS, prepareHeightmap, encodeGrayPng, validateHeightmapPng, decodeGrayPng };
